@@ -79,6 +79,7 @@ class Encoder(HModule):
             b.c4.weight.data *= np.sqrt(1 / n_blocks)
         self.enc_blocks = nn.ModuleList(enc_blocks)
 
+    # res seems to refer to the residuls block number. 
     def forward(self, x):
         x = x.permute(0, 3, 1, 2).contiguous()
         x = self.in_conv(x)
@@ -103,14 +104,27 @@ class DecBlock(nn.Module):
         use_3x3 = res > 2
         cond_width = int(width * H.bottleneck_multiple)
         self.zdim = H.zdim
+
+
+        # First one in block in in-channels, second is middle channels, and third is out channels
+        # So for enc - which is the  q blokc in-channels is multiplied by 2 since we concatenate
+        # and out channels is multiplied by 2 since we want mu and logvar. 
         self.enc = Block(width * 2, cond_width, H.zdim * 2, residual=False, use_3x3=use_3x3)
+
+        # Here for out channel we want target mu, target logvar and an update to x 
         self.prior = Block(width, cond_width, H.zdim * 2 + width, residual=False, use_3x3=use_3x3, zero_last=True)
+
+        
         self.z_proj = get_1x1(H.zdim, width)
         self.z_proj.weight.data *= np.sqrt(1 / n_blocks)
         self.resnet = Block(width, cond_width, width, residual=True, use_3x3=use_3x3)
         self.resnet.c4.weight.data *= np.sqrt(1 / n_blocks)
         self.z_fn = lambda x: self.z_proj(x)
 
+    # Here the z is drawn from the disttribution parameterized by the qs. However, we want the mu and the sigma of the qs 
+    # to look like what we have from the ps. 
+
+    # When adapting this for free entropy, use the value from the ps to modify the qs into standard normal then compute free entropy.
     def sample(self, x, acts):
         qm, qv = self.enc(torch.cat([x, acts], dim=1)).chunk(2, dim=1)
         feats = self.prior(x)
@@ -143,6 +157,9 @@ class DecBlock(nn.Module):
             x = x.repeat(acts.shape[0], 1, 1, 1)
         return x, acts
 
+
+    # xs are the inputs from the previous decoder block and activations are the inputs from the encoder block
+    # Here we assume that the first input to the decoder block is all zeros. 
     def forward(self, xs, activations, get_latents=False):
         x, acts = self.get_inputs(xs, activations)
         if self.mixin is not None:

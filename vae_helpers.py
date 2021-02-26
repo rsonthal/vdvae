@@ -5,11 +5,14 @@ import torch.nn.functional as F
 
 
 @torch.jit.script
+#This is D_KL(N(mu1,sigma1),N(mu2,sigma2)) -- In the VAE notebook, we have mu2 = 0, sigma2 = 0
 def gaussian_analytical_kl(mu1, mu2, logsigma1, logsigma2):
     return -0.5 + logsigma2 - logsigma1 + 0.5 * (logsigma1.exp() ** 2 + (mu1 - mu2) ** 2) / (logsigma2.exp() ** 2)
 
 
 @torch.jit.script
+
+#Draws a Gassian Sample --- This is the same as the reparametrize function from my code. 
 def draw_gaussian_diag_samples(mu, logsigma):
     eps = torch.empty_like(mu).normal_(0., 1.)
     return torch.exp(logsigma) * eps + mu
